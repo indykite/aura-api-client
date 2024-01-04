@@ -12,13 +12,17 @@ import (
 const endpoint = "https://api.neo4j.io/v1"
 
 type Client struct {
-	Client      *http.Client
-	bearerToken string
+	Client       *http.Client
+	bearerToken  string
+	clientSecret string
+	clientID     string
 }
 
-func NewClient() (*Client, error) {
+func NewClient(clientID, clientSecret string) (*Client, error) {
 	return &Client{
-		Client: &http.Client{},
+		Client:       &http.Client{},
+		clientID:     clientID,
+		clientSecret: clientSecret,
 	}, nil
 }
 
@@ -156,6 +160,7 @@ func (c *Client) authenticate() error {
 	if err != nil {
 		return err
 	}
+	req.SetBasicAuth(c.clientID, c.clientSecret)
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		return err
