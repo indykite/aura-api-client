@@ -7,22 +7,25 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 const endpoint = "https://api.neo4j.io/v1"
 
 type Client struct {
-	Client       *http.Client
-	bearerToken  string
-	clientSecret string
-	clientID     string
+	Client         *http.Client
+	accessToken    string
+	tokenExpiresAt time.Time
+	clientSecret   string
+	clientID       string
 }
 
 func NewClient(clientID, clientSecret string) (*Client, error) {
 	return &Client{
-		Client:       &http.Client{},
-		clientID:     clientID,
-		clientSecret: clientSecret,
+		Client:         &http.Client{},
+		clientID:       clientID,
+		clientSecret:   clientSecret,
+		tokenExpiresAt: time.Now(),
 	}, nil
 }
 
@@ -97,6 +100,9 @@ func (c *Client) DestroyInstance() {
 
 }
 
+// NewRequest returns a request that is valid for the Neo4J Aura API
+// given the HTTP method and path as well as a potential request body to
+// add as a payload.
 func (c *Client) NewRequest(method, path string, reqBody map[string]any) (*http.Request, error) {
 	var body []byte
 	var err error
@@ -119,6 +125,8 @@ func (c *Client) NewRequest(method, path string, reqBody map[string]any) (*http.
 	return req, nil
 }
 
+// Do runs a given request and handles any authentication errors
+// encountered along the way.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// Sign the request
 	err := c.sign(req)
@@ -130,7 +138,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// If authorization is stale then refresh and call again
 	if resp.StatusCode == http.StatusForbidden {
 		// refresh bearer token
-		c.bearerToken = ""
+		c.accessToken = ""
 		err = c.sign(req)
 		if err != nil {
 			return nil, err
@@ -140,17 +148,19 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
+// sign adds a valid access token to a request.
 func (c *Client) sign(req *http.Request) error {
-	if c.bearerToken == "" {
+	if c.accessToken == "" || time.Now().After(c.tokenExpiresAt) {
 		err := c.authenticate()
 		if err != nil {
 			return err
 		}
 	}
-	req.Header.Add("Authorization", "Bearer "+c.bearerToken)
+	req.Header.Add("Authorization", "Bearer "+c.accessToken)
 	return nil
 }
 
+// authenticate ensures that we have an access token and that it is valid.
 func (c *Client) authenticate() error {
 	body, err := json.Marshal(map[string]string{"grant_type": "client_credentials"})
 	if err != nil {
@@ -166,8 +176,21 @@ func (c *Client) authenticate() error {
 		return err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return errors.New("Authentication failed with status code: " + strconv.Itoa(resp.StatusCode))
+		return errors.New("authentication failed with status code: " + strconv.Itoa(resp.StatusCode))
 	}
+	var res map[string]any
+	err = responseBodyToMap(resp, &res)
+	if err != nil {
+		return err
+	}
+	if _, ok := res["access_token"].(string); !ok {
+		return errors.New("auth response missing access_token key or value not string")
+	}
+	if _, ok := res["expires_in"].(int); !ok {
+		return errors.New("auth response missing expires_in key or value not integer")
+	}
+	c.accessToken = res["access_token"].(string)
+	c.tokenExpiresAt = time.Now().Add(time.Second * time.Duration(res["expires_in"].(int)))
 	return nil
 }
 
@@ -179,24 +202,31 @@ func (c *Client) authenticate() error {
 //		"data": response body goes here
 //	}
 func UnmarshalResponse(resp *http.Response) (any, error) {
-	defer resp.Body.Close()
-	var res map[string]any
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		// TODO add error handling
 		return nil, nil
 	}
-	d := json.NewDecoder(bytes.NewReader(body))
-	err = d.Decode(&res)
+	defer resp.Body.Close()
+	var res map[string]any
+	err := responseBodyToMap(resp, &res)
 	if err != nil {
 		return nil, err
 	}
 	if data, ok := res["data"]; ok {
-		// TODO add error handling
 		return data, nil
 	}
-	return nil, errors.New(`Expected response to contain key "data"`)
+	return nil, errors.New(`expected response to contain key "data".`)
+}
+
+func responseBodyToMap(resp *http.Response, res *map[string]any) error {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if len(body) == 0 {
+		return nil
+	}
+	d := json.NewDecoder(bytes.NewReader(body))
+	return d.Decode(&res)
 }
