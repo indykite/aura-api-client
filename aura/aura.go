@@ -12,7 +12,12 @@ import (
 
 const endpoint = "https://api.neo4j.io/v1"
 
-type Client struct {
+// TODO: Add interface here
+type Client interface {
+	CreateInstance() (*CreateResponse, error)
+}
+
+type client struct {
 	Client         *http.Client
 	accessToken    string
 	tokenExpiresAt time.Time
@@ -20,8 +25,8 @@ type Client struct {
 	clientID       string
 }
 
-func NewClient(clientID, clientSecret string) (*Client, error) {
-	return &Client{
+func NewClient(clientID, clientSecret string) (*client, error) {
+	return &client{
 		Client:         &http.Client{},
 		clientID:       clientID,
 		clientSecret:   clientSecret,
@@ -44,6 +49,7 @@ type CreateResponse struct {
 	instance_type  string // enterprise-db, professional-db, ...
 }
 
+// Clean this up with JSON tags
 func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 	body, err := UnmarshalResponse(httpResp)
 	if err != nil {
@@ -51,41 +57,44 @@ func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 	}
 	m, ok := body.(map[string]any)
 	if !ok {
-		return nil, errors.New(`Expected response to be a map with string keys`)
+		return nil, errors.New(`expected response to be a map with string keys`)
 	}
 	resp := &CreateResponse{}
 	if resp.id, ok = m["id"].(string); !ok {
-		return nil, errors.New(`Response missing key "id" or value not string`)
+		return nil, errors.New(`response missing key "id" or value not string`)
 	}
 	if resp.connection_url, ok = m["connection_url"].(string); !ok {
-		return nil, errors.New(`Response missing key "connection_url" or value not string`)
+		return nil, errors.New(`response missing key "connection_url" or value not string`)
 	}
 	if resp.username, ok = m["username"].(string); !ok {
-		return nil, errors.New(`Response missing key "username" or value not string`)
+		return nil, errors.New(`response missing key "username" or value not string`)
 	}
 	if resp.password, ok = m["password"].(string); !ok {
-		return nil, errors.New(`Response missing key "password" or value not string`)
+		return nil, errors.New(`response missing key "password" or value not string`)
 	}
 	if resp.name, ok = m["name"].(string); !ok {
-		return nil, errors.New(`Response missing key "name" or value not string`)
+		return nil, errors.New(`response missing key "name" or value not string`)
 	}
 	if resp.tenant_id, ok = m["tenant_id"].(string); !ok {
-		return nil, errors.New(`Response missing key "tenant_id" or value not string`)
+		return nil, errors.New(`response missing key "tenant_id" or value not string`)
 	}
 	if resp.cloud_provider, ok = m["cloud_provider"].(string); !ok {
-		return nil, errors.New(`Response missing key "cloud_provider" or value not string`)
+		return nil, errors.New(`response missing key "cloud_provider" or value not string`)
 	}
 	if resp.region, ok = m["region"].(string); !ok {
-		return nil, errors.New(`Response missing key "region" or value not string`)
+		return nil, errors.New(`response missing key "region" or value not string`)
 	}
 	if resp.instance_type, ok = m["instance_type"].(string); !ok {
-		return nil, errors.New(`Response missing key "instance_type" or value not string`)
+		return nil, errors.New(`response missing key "instance_type" or value not string`)
 	}
 	return resp, nil
 }
 
-func (c *Client) CreateInstance() (*CreateResponse, error) {
-	req, err := c.NewRequest("POST", endpoint+"/instances", nil)
+// CreateInstance should take a config object
+func (c *client) CreateInstance(name string) (*CreateResponse, error) {
+	req, err := c.NewRequest("POST", endpoint+"/instances", map[string]any{
+		"name": name,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -96,14 +105,14 @@ func (c *Client) CreateInstance() (*CreateResponse, error) {
 	return NewCreateResponse(apiResp)
 }
 
-func (c *Client) DestroyInstance() {
+func (c *client) DestroyInstance() {
 
 }
 
 // NewRequest returns a request that is valid for the Neo4J Aura API
 // given the HTTP method and path as well as a potential request body to
 // add as a payload.
-func (c *Client) NewRequest(method, path string, reqBody map[string]any) (*http.Request, error) {
+func (c *client) NewRequest(method, path string, reqBody map[string]any) (*http.Request, error) {
 	var body []byte
 	var err error
 	// Parse and add body
@@ -127,7 +136,7 @@ func (c *Client) NewRequest(method, path string, reqBody map[string]any) (*http.
 
 // Do runs a given request and handles any authentication errors
 // encountered along the way.
-func (c *Client) Do(req *http.Request) (*http.Response, error) {
+func (c *client) Do(req *http.Request) (*http.Response, error) {
 	// Sign the request
 	err := c.sign(req)
 	if err != nil {
@@ -149,7 +158,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 }
 
 // sign adds a valid access token to a request.
-func (c *Client) sign(req *http.Request) error {
+func (c *client) sign(req *http.Request) error {
 	if c.accessToken == "" || time.Now().After(c.tokenExpiresAt) {
 		err := c.authenticate()
 		if err != nil {
@@ -161,7 +170,7 @@ func (c *Client) sign(req *http.Request) error {
 }
 
 // authenticate ensures that we have an access token and that it is valid.
-func (c *Client) authenticate() error {
+func (c *client) authenticate() error {
 	body, err := json.Marshal(map[string]string{"grant_type": "client_credentials"})
 	if err != nil {
 		return err
@@ -183,6 +192,7 @@ func (c *Client) authenticate() error {
 	if err != nil {
 		return err
 	}
+	// TODO switch to
 	if _, ok := res["access_token"].(string); !ok {
 		return errors.New("auth response missing access_token key or value not string")
 	}
