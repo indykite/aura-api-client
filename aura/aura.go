@@ -12,12 +12,14 @@ import (
 
 const endpoint = "https://api.neo4j.io/v1"
 
+// Client is the interface containing the methods for connecting to the Aura API.
 type Client interface {
 	CreateInstance() (*CreateResponse, error)
 }
 
 type client struct {
 	httpClient     *http.Client
+	endpoint       string
 	accessToken    string
 	tokenExpiresAt time.Time
 	clientSecret   string
@@ -26,9 +28,12 @@ type client struct {
 
 type Option func(*client)
 
+// NewClient creates a new based on a given client ID and secret as well as
+// options for customizing the returned client.
 func NewClient(clientID, clientSecret string, options ...Option) (*client, error) {
 	c := &client{
 		httpClient:     &http.Client{},
+		endpoint:       endpoint,
 		clientID:       clientID,
 		clientSecret:   clientSecret,
 		tokenExpiresAt: time.Now(),
@@ -39,16 +44,24 @@ func NewClient(clientID, clientSecret string, options ...Option) (*client, error
 	return c, nil
 }
 
-func WithHttpClient(h http.Client) Option {
+// WithHTTPClient sets the HTTP client used to communicate with Aura.
+func WithHTTPClient(h http.Client) Option {
 	return func(c *client) {
 		c.httpClient = &h
 	}
 }
 
-type CreateResponse struct {
-	// Constructed from the values from
-	// https://neo4j.com/docs/aura/platform/api/specification/#/instances/post-instances
+// WithEndpoint sets the a custom endpoint for Aura
+func WithEndpoint(e string) Option {
+	return func(c *client) {
+		c.endpoint = e
+	}
+}
 
+// CreateResponse is returned when creating an Aura instance and is
+// Constructed from the values from
+// https://neo4j.com/docs/aura/platform/api/specification/#/instances/post-instances
+type CreateResponse struct {
 	id             string // Internal ID of the instance
 	connection_url string // URL the instance is hosted at
 	username       string // Name of the initial admin user
