@@ -12,26 +12,37 @@ import (
 
 const endpoint = "https://api.neo4j.io/v1"
 
-// TODO: Add interface here
 type Client interface {
 	CreateInstance() (*CreateResponse, error)
 }
 
 type client struct {
-	Client         *http.Client
+	httpClient     *http.Client
 	accessToken    string
 	tokenExpiresAt time.Time
 	clientSecret   string
 	clientID       string
 }
 
-func NewClient(clientID, clientSecret string) (*client, error) {
-	return &client{
-		Client:         &http.Client{},
+type Option func(*client)
+
+func NewClient(clientID, clientSecret string, options ...Option) (*client, error) {
+	c := &client{
+		httpClient:     &http.Client{},
 		clientID:       clientID,
 		clientSecret:   clientSecret,
 		tokenExpiresAt: time.Now(),
-	}, nil
+	}
+	for _, o := range options {
+		o(c)
+	}
+	return c, nil
+}
+
+func WithHttpClient(h http.Client) Option {
+	return func(c *client) {
+		c.httpClient = &h
+	}
 }
 
 type CreateResponse struct {
@@ -143,7 +154,7 @@ func (c *client) Do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	// Perform the call
-	resp, err := c.Client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	// If authorization is stale then refresh and call again
 	if resp.StatusCode == http.StatusForbidden {
 		// refresh bearer token
@@ -152,7 +163,7 @@ func (c *client) Do(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		resp, err = c.Client.Do(req)
+		resp, err = c.httpClient.Do(req)
 	}
 	return resp, err
 }
@@ -180,7 +191,7 @@ func (c *client) authenticate() error {
 		return err
 	}
 	req.SetBasicAuth(c.clientID, c.clientSecret)
-	resp, err := c.Client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -192,7 +203,7 @@ func (c *client) authenticate() error {
 	if err != nil {
 		return err
 	}
-	// TODO switch to
+	// TODO switch to JSON tags
 	if _, ok := res["access_token"].(string); !ok {
 		return errors.New("auth response missing access_token key or value not string")
 	}
