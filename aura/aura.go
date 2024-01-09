@@ -7,10 +7,11 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
-const endpoint = "https://api.neo4j.io/v1"
+const endpoint = "https://api.neo4j.io"
 
 // Client is the interface containing the methods for connecting to the Aura API.
 type Client interface {
@@ -120,7 +121,7 @@ func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 // returning information about the instance if succesful and otherwise
 // returning an error.
 func (c *client) CreateInstance(name string) (*CreateResponse, error) {
-	req, err := c.NewRequest("POST", c.endpoint+"/instances", map[string]any{
+	req, err := c.NewRequest("POST", c.endpoint+"/v1/instances", map[string]any{
 		"name": name,
 	})
 	if err != nil {
@@ -198,7 +199,7 @@ func NewGetResponse(httpResp *http.Response) (*GetResponse, error) {
 // GetInstnace attempts to get information about an instance identified
 // by the ID assigned to it by Neo4J.
 func (c *client) GetInstance(id string) (*GetResponse, error) {
-	req, err := c.NewRequest("GET", c.endpoint+"/instances/"+id, nil)
+	req, err := c.NewRequest("GET", c.endpoint+"/v1/instances/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -275,11 +276,8 @@ func (c *client) sign(req *http.Request) error {
 
 // authenticate ensures that we have an access token and that it is valid.
 func (c *client) authenticate() error {
-	body, err := json.Marshal(map[string]string{"grant_type": "client_credentials"})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest("POST", c.endpoint+"/oauth/token", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", c.endpoint+"/oauth/token", strings.NewReader("grant_type=client_credentials"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if err != nil {
 		return err
 	}
