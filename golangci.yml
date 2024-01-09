@@ -1,0 +1,273 @@
+---
+run:
+    skip-dirs:
+        - pkg/covi/swagger
+linters:
+    enable:
+        # By Default
+        - errcheck
+        - gosimple
+        - govet
+        - ineffassign
+        - staticcheck
+        - stylecheck
+        - typecheck # Not in the linter list, but keep it https://golangci-lint.run/usage/faq/#why-do-you-have-typecheck-errors
+        - unused
+
+        # Extra
+        - asasalint
+        - asciicheck
+        - bidichk
+        - bodyclose
+        - containedctx #yaml_line:disable
+        - contextcheck #yaml_line:disable
+        - dogsled
+        - dupword
+        - durationcheck
+        - errchkjson #yaml_line:disable
+        - errname
+        - errorlint #yaml_line:disable
+        - execinquery
+        # - exhaustive # Should be used?
+        - exportloopref
+        - forbidigo
+        - gci
+        - ginkgolinter #yaml_line:disable
+        - gocheckcompilerdirectives
+        - gocritic #yaml_line:disable
+        - godot #yaml_line:disable
+        # - goerr113 # As this is public SDK, would be nice to follow new error patterns
+        - gofmt
+        - goheader
+        - gosec
+        - gosmopolitan
+        - grouper
+        - inamedparam #yaml_line:disable
+        - lll
+        - loggercheck
+        - makezero
+        - mirror
+        - misspell
+        - nakedret #yaml_line:disable
+        - nestif #yaml_line:disable
+        - nilerr #yaml_line:disable
+        - noctx #yaml_line:disable
+        - nolintlint #yaml_line:disable
+        # - nonamedreturns # naked return is disabled, so named returns are just like var declaration, this is fine now
+        - nosprintfhostport
+        - perfsprint
+        - prealloc #yaml_line:disable
+        - predeclared
+        - protogetter #yaml_line:disable
+        - reassign
+        - revive
+        - rowserrcheck
+        # - sloglint # When slog is used
+        - sqlclosecheck
+        - tagalign #yaml_line:disable
+        - testifylint
+        - testpackage
+        - unconvert
+        - unparam #yaml_line:disable
+        - usestdlibvars #yaml_line:disable
+        - wastedassign
+        - whitespace
+
+linters-settings:
+    lll:
+        line-length: 120
+
+    gci:
+        # Keep in sync with GNUMakefile
+        sections:
+            - standard
+            - default
+            - prefix(github.com/indykite/jarvis)
+            - blank
+            - dot
+
+    stylecheck:
+        checks:
+            - all
+            # - -ST1003 #yaml_line:enable
+
+    gosec:
+        excludes:
+            - G104 # Unhandled errors - is checked by revive.unhandled-error with some exceptions
+
+    govet:
+        check-shadowing: true #yaml_line:disable
+        enable-all: true #yaml_line:disable
+
+    gocritic:
+        enabled-tags:
+            - diagnostic
+            - style
+            - performance
+            - experimental
+            - opinionated
+        disabled-checks:
+            - whyNoLint # Is checked by nolintlint with excluding lll much easier
+            - deferInLoop # Checked by revive already
+            - dupBranchBody # Checked by revive already
+
+    goheader:
+        values:
+            regexp:
+                # As long we decide which format of YEAR in copyright we want, add this hack
+                our_year: 202[0-3] # Just change to 202[2-3] or other when changed
+        template: |-
+            Copyright (c) {{OUR_YEAR}} IndyKite
+
+            Licensed under the Apache License, Version 2.0 (the "License");
+            you may not use this file except in compliance with the License.
+            You may obtain a copy of the License at
+
+            http://www.apache.org/licenses/LICENSE-2.0
+
+            Unless required by applicable law or agreed to in writing, software
+            distributed under the License is distributed on an "AS IS" BASIS,
+            WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            See the License for the specific language governing permissions and
+            limitations under the License.
+
+    nakedret:
+        max-func-lines: 8 # Counting also declaration, not just body
+
+    nolintlint:
+        allow-no-explanation: [lll]
+        require-explanation: true
+        require-specific: true
+
+    exhaustive:
+        check:
+            - switch
+            - map
+        default-signifies-exhaustive: true
+
+    revive:
+        # When listed some additional rules, it overrides defaults as well.
+        # Put manually all default ones from https://github.com/mgechev/revive/blob/master/defaults.toml
+        rules:
+            # Default ones sorted as are in defaults.toml
+            - name: blank-imports
+            - name: context-as-argument
+            - name: context-keys-type
+            - name: dot-imports #yaml_line:disable
+            - name: empty-block
+            - name: error-naming
+            - name: error-return
+            - name: error-strings
+            - name: errorf
+            - name: exported #yaml_line:disable
+              arguments: [checkPrivateReceivers] #yaml_line:disable
+            - name: increment-decrement
+            - name: indent-error-flow
+            - name: package-comments
+            - name: range
+            - name: receiver-naming
+            - name: redefines-builtin-id
+            - name: superfluous-else
+            - name: time-naming
+            - name: unexported-return #yaml_line:disable
+            - name: unreachable-code
+            - name: unused-parameter #yaml_line:disable
+            - name: var-declaration
+            - name: var-naming #yaml_line:disable
+
+            # Extra ones
+            - name: atomic
+            - name: bare-return #yaml_line:disable
+            - name: bool-literal-in-expr
+            - name: comment-spacings
+            - name: confusing-naming #yaml_line:disable
+            - name: confusing-results #yaml_line:disable
+            - name: constant-logical-expr
+            - name: datarace
+            - name: deep-exit
+            - name: defer
+            - name: duplicated-imports
+            - name: early-return #yaml_line:disable
+            - name: empty-lines #yaml_line:disable
+            - name: get-return
+            - name: identical-branches
+            - name: if-return #yaml_line:disable
+            - name: import-alias-naming
+              # disabled: true #yaml_line:enable
+              arguments:
+                  - ^([a-z][a-z0-9]{0,}|\.)$
+            - name: import-shadowing #yaml_line:disable
+            - name: imports-blacklist
+              arguments:
+                  - github.com/gogo/status
+                  - github.com/gogo/protobuf
+                  - github.com/gogo/googleapis
+            - name: modifies-parameter
+            - name: modifies-value-receiver
+            - name: nested-structs
+            - name: optimize-operands-order
+            - name: range-val-address
+            - name: range-val-in-closure
+            - name: redundant-import-alias
+            - name: string-of-int
+            - name: struct-tag
+            - name: time-equal
+            # - name: unchecked-type-assertion # Not sure about this one...
+            - name: unconditional-recursion
+            - name: unexported-naming #yaml_line:disable
+            - name: unhandled-error # It is OK not to check errors from some specific cases
+              arguments:
+                  - (?i)fmt\.(F|S)?Print(ln|f)?
+                  - (bytes\.Buffer|strings\.Builder)\.Write(Byte|String|Rune)?
+            - name: unnecessary-stmt #yaml_line:disable
+            - name: unused-receiver #yaml_line:disable
+            - name: use-any #yaml_line:disable
+            - name: useless-break
+            - name: waitgroup-by-value
+
+    usestdlibvars:
+        default-rpc-path: true
+        os-dev-null: true
+        sql-isolation-level: true
+
+issues:
+    exclude-use-default: false # Some rules are excluded by GolangCI Linter by default, this one will prevent
+    max-issues-per-linter: 0
+    max-same-issues: 0
+    exclude-rules:
+        # Exclude lll issues for long lines with go:generate (including the ones commented out)
+        - linters:
+              - lll
+          source: '^(//){1,2}go:generate '
+
+        # Ignore FieldAlignment in tests, we don't care there so much about memory performance.
+        - linters:
+              - govet
+          text: '^fieldalignment:'
+          path: .*_test.go
+
+        # Ignore forbidigo (disabled patterns) in tests, CLI and lokalise.
+        - linters:
+              - forbidigo
+          text: ^use of `fmt.
+          path: (^cli/cmd/)|(^pkg/lokalise/)|.*_test.go
+
+        # We want to allow import gomega and ginkgo (+ all sub-packages) in tests files only
+        - linters:
+              - revive
+          text: '^dot-imports:'
+          source: . "github.com/onsi/(gomega|ginkgo)(/.*)?"
+          path: .*_test.go
+
+        # Dupword checks for multiple words in comment or text, which sometimes happen.
+        # But there are some false positives ones, especially in Cyphers.
+        - linters:
+              - dupword
+          text: Duplicate words \(END\) found
+          path: pkg/cypher/.*\.go
+
+          # Do not enforce doc block on const/func/structs etc. in test files and test package.
+        - linters:
+              - revive
+          text: 'exported:'
+          path: pkg/test/.*\.go
