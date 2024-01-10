@@ -14,10 +14,10 @@ func mockAuth() {
 		httpmock.NewStringResponder(200, `{"access_token": "bar", "expires_in": 3600}`))
 }
 
-func mockGet(ID string) {
+func mockGet(id string) {
 	b := map[string]any{
 		"data": map[string]any{
-			"id":             ID,
+			"id":             id,
 			"name":           "Production",
 			"status":         "running",
 			"tenant_id":      "YOUR_TENANT_ID",
@@ -30,7 +30,7 @@ func mockGet(ID string) {
 		},
 	}
 	body, _ := json.Marshal(b)
-	httpmock.RegisterResponder("GET", endpoint+"/instances/"+ID,
+	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
 		httpmock.NewStringResponder(200, string(body)))
 }
 
@@ -49,8 +49,23 @@ func mockCreate(name string) {
 		},
 	}
 	body, _ := json.Marshal(b)
-	httpmock.RegisterResponder("POST", endpoint+"/instances",
+	httpmock.RegisterResponder("POST", endpoint+"/v1/instances",
 		httpmock.NewStringResponder(200, string(body)))
+}
+
+func mockDestroy(id string) {
+	httpmock.RegisterResponder("DELETE", endpoint+"/v1/instances/"+id,
+		httpmock.NewStringResponder(202, "foo"))
+}
+
+func mockDestroyNotFound(id string) {
+	httpmock.RegisterResponder("DELETE", endpoint+"/v1/instances/"+id,
+		httpmock.NewStringResponder(404, "Not found"))
+}
+
+func mockDestroyFailing(id string) {
+	httpmock.RegisterResponder("DELETE", endpoint+"/v1/instances/"+id,
+		httpmock.NewStringResponder(409, "Busy"))
 }
 
 const endpoint = "aura.example"
@@ -61,7 +76,7 @@ var _ = Describe("Aura", func() {
 		err    error
 	)
 	BeforeEach(func() {
-		client, err = aura.NewClient("foo", "bar", aura.WithEndpoint(endpoint))
+		client, err = aura.NewClient("foo", "bar", "mox", aura.WithEndpoint(endpoint))
 		if err != nil {
 			panic(err)
 		}
@@ -70,7 +85,7 @@ var _ = Describe("Aura", func() {
 		It("should create a post request to the Aura API", func() {
 			mockAuth()
 			mockCreate("foo")
-			actual, err := client.CreateInstance("foo")
+			actual, err := client.CreateInstance("foo", "gcp", "2GB", "5", "us-east1", "enterprise-db")
 			Expect(err).To(Succeed())
 			Expect(actual.Name).To(Equal("foo"))
 		})
@@ -85,11 +100,23 @@ var _ = Describe("Aura", func() {
 		})
 	})
 	Describe("Deleting an instance", func() {
-		It("should return the instance response when succesful", func() {
-
+		It("should return no error when successful", func() {
+			mockAuth()
+			mockDestroy("abc123")
+			err := client.DestroyInstance("abc123")
+			Expect(err).To(Succeed())
 		})
 		It("should treat 404 as success", func() {
-
+			mockAuth()
+			mockDestroyNotFound("abc123")
+			err := client.DestroyInstance("abc123")
+			Expect(err).To(Succeed())
+		})
+		It("should fail on other response codes", func() {
+			mockAuth()
+			mockDestroyFailing("abc123")
+			err := client.DestroyInstance("abc123")
+			Expect(err).To(Not(Succeed()))
 		})
 	})
 })

@@ -16,7 +16,8 @@ const endpoint = "https://api.neo4j.io"
 // Client is the interface containing the methods for connecting to the Aura API.
 type Client interface {
 	CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error)
-	GetInstance(name string) (*GetResponse, error)
+	GetInstance(id string) (*GetResponse, error)
+	DestroyInstance(id string) error
 }
 
 type client struct {
@@ -209,7 +210,7 @@ func NewGetResponse(httpResp *http.Response) (*GetResponse, error) {
 	return resp, nil
 }
 
-// GetInstnace attempts to get information about an instance identified
+// GetInstance attempts to get information about an instance identified
 // by the ID assigned to it by Neo4J.
 func (c *client) GetInstance(id string) (*GetResponse, error) {
 	req, err := c.NewRequest("GET", c.endpoint+"/v1/instances/"+id, nil)
@@ -226,8 +227,22 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 	return NewGetResponse(apiResp)
 }
 
-func (c *client) DestroyInstance() {
-
+// Destroy instance tears down an instance identified by the Aura ID
+// A 404 from the API is seen as succcesful as it indicates the instance no longer exists
+func (c *client) DestroyInstance(id string) error {
+	req, err := c.NewRequest("DELETE", c.endpoint+"/v1/instances/"+id, nil)
+	if err != nil {
+		return err
+	}
+	apiResp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	if apiResp.StatusCode == http.StatusNotFound ||
+		(apiResp.StatusCode >= http.StatusOK && apiResp.StatusCode < http.StatusMultipleChoices) {
+		return nil
+	}
+	return errors.New(apiResp.Status)
 }
 
 // NewRequest returns a request that is valid for the Neo4J Aura API
