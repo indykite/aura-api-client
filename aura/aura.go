@@ -15,7 +15,7 @@ const endpoint = "https://api.neo4j.io"
 
 // Client is the interface containing the methods for connecting to the Aura API.
 type Client interface {
-	CreateInstance(name string) (*CreateResponse, error)
+	CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error)
 	GetInstance(name string) (*GetResponse, error)
 }
 
@@ -26,19 +26,21 @@ type client struct {
 	tokenExpiresAt time.Time
 	clientSecret   string
 	clientID       string
+	tenantID       string
 }
 
 type Option func(*client)
 
 // NewClient creates a new based on a given client ID and secret as well as
 // options for customizing the returned client.
-func NewClient(clientID, clientSecret string, options ...Option) (*client, error) {
+func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*client, error) {
 	c := &client{
 		httpClient:     &http.Client{},
 		endpoint:       endpoint,
 		clientID:       clientID,
 		clientSecret:   clientSecret,
 		tokenExpiresAt: time.Now(),
+		tenantID:       tenantID,
 	}
 	for _, o := range options {
 		o(c)
@@ -120,9 +122,17 @@ func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 // CreateInstance attempts to create a new Aura instance with the given name
 // returning information about the instance if succesful and otherwise
 // returning an error.
-func (c *client) CreateInstance(name string) (*CreateResponse, error) {
+// Possible values for the parameters can be found in the documentation of the
+// Neo4J Aura API
+func (c *client) CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error) {
 	req, err := c.NewRequest("POST", c.endpoint+"/v1/instances", map[string]any{
-		"name": name,
+		"name":           name,
+		"tenant_id":      c.tenantID,
+		"cloud_provider": cloudProvider,
+		"type":           instanceType, // "enterprise-db",
+		"memory":         memory,       // "2GB",
+		"version":        version,      // "5",
+		"region":         region,       // "europe-west1",
 	})
 	if err != nil {
 		return nil, err
@@ -130,6 +140,9 @@ func (c *client) CreateInstance(name string) (*CreateResponse, error) {
 	apiResp, err := c.Do(req)
 	if err != nil {
 		return nil, err
+	}
+	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, errors.New(apiResp.Status)
 	}
 	return NewCreateResponse(apiResp)
 }
@@ -207,6 +220,9 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
+		return nil, errors.New(apiResp.Status)
+	}
 	return NewGetResponse(apiResp)
 }
 
@@ -233,7 +249,7 @@ func (c *client) NewRequest(method, path string, reqBody map[string]any) (*http.
 	}
 	// Inject headers
 	if body != nil {
-		req.Header.Add("Content-Type", "application/json;charset=utf-8")
+		req.Header.Add("Content-Type", "application/json")
 	}
 	req.Header.Add("Accept", "application/json")
 	return req, nil
