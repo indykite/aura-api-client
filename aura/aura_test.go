@@ -2,6 +2,7 @@ package aura_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"time"
 
 	"github.com/indykite/aura-client/aura"
@@ -9,6 +10,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+const endpoint = "aura.example"
+const responseId = "track-me-123"
 
 func mockAuth() {
 	httpmock.RegisterResponder("POST", endpoint+"/oauth/token",
@@ -37,7 +41,11 @@ func mockGet(id string) {
 
 func mockGetFailing(id string, errorCode int) {
 	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
-		httpmock.NewStringResponder(errorCode, "Some error"))
+		func(req *http.Request) (*http.Response, error) {
+			resp := httpmock.NewStringResponse(errorCode, "Some error")
+			resp.Header.Add("X-Request-Id", responseId)
+			return resp, nil
+		})
 }
 
 func mockCreate(name string) {
@@ -74,8 +82,6 @@ func mockDestroyFailing(id string) {
 		httpmock.NewStringResponder(409, "Busy"))
 }
 
-const endpoint = "aura.example"
-
 var _ = Describe("Aura", func() {
 	var (
 		client aura.Client
@@ -87,6 +93,14 @@ var _ = Describe("Aura", func() {
 			panic(err)
 		}
 		mockAuth()
+	})
+	Describe("Response ID", func() {
+		It("should be added from the response header", func() {
+			mockGetFailing("123id", 500)
+			_, err := client.GetInstance("123id")
+			Expect(err).NotTo(Succeed())
+			Expect(err.Error()).To(ContainSubstring(responseId))
+		})
 	})
 	Describe("Authenticating", func() {
 		It("should not be called when a valid token exists", func() {

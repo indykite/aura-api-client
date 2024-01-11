@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -27,6 +28,25 @@ var backoff = []time.Duration{
 	1 * time.Second,
 	3 * time.Second,
 	8 * time.Second,
+}
+
+type AuraError struct {
+	requestID string
+	Err       error
+}
+
+func (e *AuraError) Error() string {
+	return fmt.Sprintf("Aura API error: %v\nAura request ID: %v", e.Err, e.requestID)
+}
+
+// NewAuraError returns an AuraError with the requestID set to the
+// X-Request-Id header value of the given response. This requestID
+// can be used by Neo4J staff to identify specific requests.
+func NewAuraError(err error, resp *http.Response) *AuraError {
+	return &AuraError{
+		requestID: resp.Header.Get("X-Request-Id"),
+		Err:       err,
+	}
 }
 
 // Client is the interface containing the methods for connecting to the Aura API.
@@ -181,9 +201,13 @@ func (c *client) CreateInstance(name, cloudProvider, memory, version, region, in
 		return nil, err
 	}
 	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-		return nil, errors.New(apiResp.Status)
+		return nil, NewAuraError(errors.New(apiResp.Status), apiResp)
 	}
-	return NewCreateResponse(apiResp)
+	resp, err := NewCreateResponse(apiResp)
+	if err != nil {
+		return nil, NewAuraError(err, apiResp)
+	}
+	return resp, nil
 }
 
 // GetResponse contains information about a given Aura instance and
@@ -260,9 +284,13 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 		return nil, err
 	}
 	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-		return nil, errors.New(apiResp.Status)
+		return nil, NewAuraError(errors.New(apiResp.Status), apiResp)
 	}
-	return NewGetResponse(apiResp)
+	resp, err := NewGetResponse(apiResp)
+	if err != nil {
+		return nil, NewAuraError(err, apiResp)
+	}
+	return resp, nil
 }
 
 // Destroy instance tears down an instance identified by the Aura ID
@@ -280,7 +308,7 @@ func (c *client) DestroyInstance(id string) error {
 		(apiResp.StatusCode >= http.StatusOK && apiResp.StatusCode < http.StatusMultipleChoices) {
 		return nil
 	}
-	return errors.New(apiResp.Status)
+	return NewAuraError(errors.New(apiResp.Status), apiResp)
 }
 
 // NewRequest returns a request that is valid for the Neo4J Aura API
