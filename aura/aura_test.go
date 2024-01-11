@@ -37,6 +37,19 @@ func mockedGetResponse(id string) map[string]any {
 	}
 }
 
+func mockedErrorBody() map[string]any {
+	return map[string]any{
+		"errors": []any{
+			map[string]any{
+				"message": "Server not responding.",
+				"reason":  "It is on fire",
+				"field":   "Ornithology",
+			},
+		},
+	}
+
+}
+
 func mockGet(id string) {
 	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
 		func(req *http.Request) (*http.Response, error) {
@@ -52,7 +65,10 @@ func mockGet(id string) {
 func mockGetFailing(id string, errorCode int) {
 	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
 		func(req *http.Request) (*http.Response, error) {
-			resp := httpmock.NewStringResponse(errorCode, "Some error")
+			resp, err := httpmock.NewJsonResponse(errorCode, mockedErrorBody())
+			if err != nil {
+				panic(err)
+			}
 			resp.Header.Add("X-Request-Id", responseId)
 			return resp, nil
 		})

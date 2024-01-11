@@ -33,14 +33,16 @@ var backoff = []time.Duration{
 }
 
 // AuraError is used to inject the request ID used by Neo4J support into
-// error messages when possible.
+// error messages when possible and include the response body.
 type AuraError struct {
 	requestID string
 	Err       error
+	response  string
 }
 
 func (e *AuraError) Error() string {
-	return fmt.Sprintf("Aura API error: %v\nAura request ID: %v", e.Err, e.requestID)
+	return fmt.Sprintf("Aura API error: %v\nAura request ID: %v\nResponse body: %v",
+		e.Err, e.requestID, e.response)
 }
 
 // newAuraError returns an AuraError with the requestID set to the
@@ -50,6 +52,7 @@ func newAuraError(err error, resp *http.Response) *AuraError {
 	return &AuraError{
 		requestID: resp.Header.Get("X-Request-Id"),
 		Err:       err,
+		response:  responseBodyToString(resp),
 	}
 }
 
@@ -203,17 +206,16 @@ func newCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 // CreateInstance attempts to create a new Aura instance with the given name
 // returning information about the instance if succesful and otherwise
 // returning an error.
-// Possible values for the parameters can be found in the documentation of the
-// Neo4J Aura API
+// Possible values for the parameters can be found in the documentation of the Neo4J Aura API.
 func (c *client) CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error) {
 	req, err := c.newRequest("POST", c.api()+"/instances", map[string]any{
 		"name":           name,
 		"tenant_id":      c.tenantID,
 		"cloud_provider": cloudProvider,
-		"type":           instanceType, // "enterprise-db",
-		"memory":         memory,       // "2GB",
-		"version":        version,      // "5",
-		"region":         region,       // "europe-west1",
+		"type":           instanceType,
+		"memory":         memory,
+		"version":        version,
+		"region":         region,
 	})
 	if err != nil {
 		return nil, err
@@ -387,7 +389,8 @@ func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
 	}
 	// Retry the request in case of 5xx errors
 	if i < uint(c.retries) && slices.Contains(retryOn, resp.StatusCode) {
-		c.logger.Info(`Retried Aura API request after receiving: ` + resp.Status)
+		c.logger.Info(`Retried Aura API request after receiving: ` +
+			resp.Status + " " + responseBodyToString(resp))
 		time.Sleep(backoff[i])
 		return c.do(req, i+1)
 	}
@@ -453,7 +456,6 @@ func (c *client) api() string {
 //		"data": response body goes here
 //	}
 func unmarshalResponse(resp *http.Response) (any, error) {
-	defer resp.Body.Close()
 	var res map[string]any
 	err := responseBodyToMap(resp, &res)
 	if err != nil {
@@ -476,4 +478,13 @@ func responseBodyToMap(resp *http.Response, res *map[string]any) error {
 	}
 	d := json.NewDecoder(bytes.NewReader(body))
 	return d.Decode(&res)
+}
+
+func responseBodyToString(resp *http.Response) string {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || len(body) == 0 {
+		return ""
+	}
+	return string(body)
 }
