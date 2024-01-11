@@ -32,6 +32,8 @@ var backoff = []time.Duration{
 	8 * time.Second,
 }
 
+// AuraError is used to inject the request ID used by Neo4J support into
+// error messages when possible.
 type AuraError struct {
 	requestID string
 	Err       error
@@ -41,10 +43,10 @@ func (e *AuraError) Error() string {
 	return fmt.Sprintf("Aura API error: %v\nAura request ID: %v", e.Err, e.requestID)
 }
 
-// NewAuraError returns an AuraError with the requestID set to the
+// newAuraError returns an AuraError with the requestID set to the
 // X-Request-Id header value of the given response. This requestID
 // can be used by Neo4J staff to identify specific requests.
-func NewAuraError(err error, resp *http.Response) *AuraError {
+func newAuraError(err error, resp *http.Response) *AuraError {
 	return &AuraError{
 		requestID: resp.Header.Get("X-Request-Id"),
 		Err:       err,
@@ -71,11 +73,11 @@ type client struct {
 	version        string
 }
 
-type Option func(*client)
+type option func(*client)
 
 // NewClient creates a new based on a given client ID and secret as well as
 // options for customizing the returned client.
-func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*client, error) {
+func NewClient(clientID, clientSecret, tenantID string, options ...option) (*client, error) {
 	c := &client{
 		httpClient:     &http.Client{},
 		logger:         slog.Default(),
@@ -97,14 +99,14 @@ func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*cli
 }
 
 // WithHTTPClient sets the HTTP client used to communicate with Aura.
-func WithHTTPClient(h *http.Client) Option {
+func WithHTTPClient(h *http.Client) option {
 	return func(c *client) {
 		c.httpClient = h
 	}
 }
 
 // WithEndpoint sets the a custom endpoint for Aura.
-func WithEndpoint(e string) Option {
+func WithEndpoint(e string) option {
 	return func(c *client) {
 		c.endpoint = e
 	}
@@ -113,14 +115,14 @@ func WithEndpoint(e string) Option {
 // WithRetries sets the maximum number of retries for requests. By default
 // we do not retry and the maximum number of retries are 3.
 // Requests are retried with exp backoff on 5xx errors as recommended by Neo4J.
-func WithRetries(n int) Option {
+func WithRetries(n int) option {
 	return func(c *client) {
 		c.retries = n
 	}
 }
 
 // WithAuthInfo sets custom access token and expiry time. Intended for testing, not production use.
-func WithAuthInfo(token string, expiresAt time.Time) Option {
+func WithAuthInfo(token string, expiresAt time.Time) option {
 	return func(c *client) {
 		c.accessToken = token
 		c.tokenExpiresAt = expiresAt
@@ -128,14 +130,14 @@ func WithAuthInfo(token string, expiresAt time.Time) Option {
 }
 
 // WithLogger sets a custom logger instead instead of slog
-func WithLogger(l *slog.Logger) Option {
+func WithLogger(l *slog.Logger) option {
 	return func(c *client) {
 		c.logger = l
 	}
 }
 
 // WithVersion sets the client to use a given API version
-func WithVersion(v string) Option {
+func WithVersion(v string) option {
 	return func(c *client) {
 		c.version = v
 	}
@@ -156,10 +158,10 @@ type CreateResponse struct {
 	InstanceType  string // enterprise-db, professional-db, ...
 }
 
-// NewCreateResponse attempts to construct a CreateResponse struct from a given
+// newCreateResponse attempts to construct a CreateResponse struct from a given
 // http response
-func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
-	body, err := UnmarshalResponse(httpResp)
+func newCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
+	body, err := unmarshalResponse(httpResp)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +206,7 @@ func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 // Possible values for the parameters can be found in the documentation of the
 // Neo4J Aura API
 func (c *client) CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error) {
-	req, err := c.NewRequest("POST", c.api()+"/instances", map[string]any{
+	req, err := c.newRequest("POST", c.api()+"/instances", map[string]any{
 		"name":           name,
 		"tenant_id":      c.tenantID,
 		"cloud_provider": cloudProvider,
@@ -221,11 +223,11 @@ func (c *client) CreateInstance(name, cloudProvider, memory, version, region, in
 		return nil, err
 	}
 	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-		return nil, NewAuraError(errors.New(apiResp.Status), apiResp)
+		return nil, newAuraError(errors.New(apiResp.Status), apiResp)
 	}
-	resp, err := NewCreateResponse(apiResp)
+	resp, err := newCreateResponse(apiResp)
 	if err != nil {
-		return nil, NewAuraError(err, apiResp)
+		return nil, newAuraError(err, apiResp)
 	}
 	return resp, nil
 }
@@ -246,10 +248,10 @@ type GetResponse struct {
 	Storage       string // Amount of storage allocated, i.e. "16GB"
 }
 
-// NewGetResponse attempts to construct a GetResponse struct from a given
+// newGetResponse attempts to construct a GetResponse struct from a given
 // http response
-func NewGetResponse(httpResp *http.Response) (*GetResponse, error) {
-	body, err := UnmarshalResponse(httpResp)
+func newGetResponse(httpResp *http.Response) (*GetResponse, error) {
+	body, err := unmarshalResponse(httpResp)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +297,7 @@ func NewGetResponse(httpResp *http.Response) (*GetResponse, error) {
 // GetInstance attempts to get information about an instance identified
 // by the ID assigned to it by Neo4J.
 func (c *client) GetInstance(id string) (*GetResponse, error) {
-	req, err := c.NewRequest("GET", c.api()+"/instances/"+id, nil)
+	req, err := c.newRequest("GET", c.api()+"/instances/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -304,11 +306,11 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 		return nil, err
 	}
 	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-		return nil, NewAuraError(errors.New(apiResp.Status), apiResp)
+		return nil, newAuraError(errors.New(apiResp.Status), apiResp)
 	}
-	resp, err := NewGetResponse(apiResp)
+	resp, err := newGetResponse(apiResp)
 	if err != nil {
-		return nil, NewAuraError(err, apiResp)
+		return nil, newAuraError(err, apiResp)
 	}
 	return resp, nil
 }
@@ -316,7 +318,7 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 // Destroy instance tears down an instance identified by the Aura ID
 // A 404 from the API is seen as succcesful as it indicates the instance no longer exists
 func (c *client) DestroyInstance(id string) error {
-	req, err := c.NewRequest("DELETE", c.api()+"/instances/"+id, nil)
+	req, err := c.newRequest("DELETE", c.api()+"/instances/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -328,13 +330,13 @@ func (c *client) DestroyInstance(id string) error {
 		(apiResp.StatusCode >= http.StatusOK && apiResp.StatusCode < http.StatusMultipleChoices) {
 		return nil
 	}
-	return NewAuraError(errors.New(apiResp.Status), apiResp)
+	return newAuraError(errors.New(apiResp.Status), apiResp)
 }
 
-// NewRequest returns a request that is valid for the Neo4J Aura API
+// newRequest returns a request that is valid for the Neo4J Aura API
 // given the HTTP method and path as well as a potential request body to
 // add as a payload.
-func (c *client) NewRequest(method, path string, reqBody map[string]any) (*http.Request, error) {
+func (c *client) newRequest(method, path string, reqBody map[string]any) (*http.Request, error) {
 	var body []byte
 	var err error
 	// Parse and add body
@@ -443,14 +445,14 @@ func (c *client) api() string {
 	return c.endpoint + "/" + c.version
 }
 
-// UnmarshalResponse handles any API errors or returns the content
+// unmarshalResponse handles any API errors or returns the content
 // in the `data` key of the API response. It assumes that the Aura API
 // always returns content in maps with a single `data` key, i.e.
 //
 //	{
 //		"data": response body goes here
 //	}
-func UnmarshalResponse(resp *http.Response) (any, error) {
+func unmarshalResponse(resp *http.Response) (any, error) {
 	defer resp.Body.Close()
 	var res map[string]any
 	err := responseBodyToMap(resp, &res)
