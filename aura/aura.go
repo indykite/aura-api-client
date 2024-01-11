@@ -93,6 +93,14 @@ func WithRetries(n int) Option {
 	}
 }
 
+// Sets custom access token and expiry time. Intended for testing, not production use.
+func WithAuthInfo(token string, expiresAt time.Time) Option {
+	return func(c *client) {
+		c.accessToken = token
+		c.tokenExpiresAt = expiresAt
+	}
+}
+
 // CreateResponse is returned when creating an Aura instance and is
 // constructed from the values from
 // https://neo4j.com/docs/aura/platform/api/specification/#/instances/post-instances.
@@ -314,6 +322,9 @@ func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
 	}
 	// Perform the call
 	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	// If authorization is stale then refresh and call again
 	if resp.StatusCode == http.StatusForbidden {
 		// refresh bearer token
