@@ -385,6 +385,7 @@ func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
 	}
 	// Retry the request in case of 5xx errors
 	if i < uint(c.retries) && slices.Contains(retryOn, resp.StatusCode) {
+		c.logger.Info(`Retried Aura API request after receiving: ` + resp.Status)
 		time.Sleep(backoff[i])
 		return c.do(req, i+1)
 	}
