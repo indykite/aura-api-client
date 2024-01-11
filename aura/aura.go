@@ -6,12 +6,28 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const endpoint = "https://api.neo4j.io"
+const retries = 0
+
+// Retriable statuses specified in the Aura API
+var retryOn = []int{
+	http.StatusInternalServerError,
+	http.StatusBadGateway,
+	http.StatusServiceUnavailable,
+	http.StatusGatewayTimeout,
+}
+
+var backoff = []time.Duration{
+	1 * time.Second,
+	3 * time.Second,
+	8 * time.Second,
+}
 
 // Client is the interface containing the methods for connecting to the Aura API.
 type Client interface {
@@ -28,6 +44,7 @@ type client struct {
 	clientSecret   string
 	clientID       string
 	tenantID       string
+	retries        int
 }
 
 type Option func(*client)
@@ -38,6 +55,7 @@ func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*cli
 	c := &client{
 		httpClient:     &http.Client{},
 		endpoint:       endpoint,
+		retries:        retries,
 		clientID:       clientID,
 		clientSecret:   clientSecret,
 		tokenExpiresAt: time.Now(),
@@ -45,6 +63,9 @@ func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*cli
 	}
 	for _, o := range options {
 		o(c)
+	}
+	if c.retries > 3 {
+		return nil, errors.New("The maximum number of retries is 3")
 	}
 	return c, nil
 }
@@ -60,6 +81,15 @@ func WithHTTPClient(h http.Client) Option {
 func WithEndpoint(e string) Option {
 	return func(c *client) {
 		c.endpoint = e
+	}
+}
+
+// WithRetries sets the maximum number of retries for requests. By default
+// we do not retry and the maximum number of retries are 3.
+// Requests are retried with exp backoff on 5xx errors as recommended by Neo4J.
+func WithRetries(n int) Option {
+	return func(c *client) {
+		c.retries = n
 	}
 }
 
@@ -273,6 +303,10 @@ func (c *client) NewRequest(method, path string, reqBody map[string]any) (*http.
 // Do runs a given request and handles any authentication errors
 // encountered along the way.
 func (c *client) Do(req *http.Request) (*http.Response, error) {
+	return c.do(req, 0)
+}
+
+func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
 	// Sign the request
 	err := c.sign(req)
 	if err != nil {
@@ -289,6 +323,11 @@ func (c *client) Do(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		resp, err = c.httpClient.Do(req)
+	}
+	// Retry the request in case of 5xx errors
+	if i < uint(c.retries) && slices.Contains(retryOn, resp.StatusCode) {
+		time.Sleep(backoff[i])
+		return c.do(req, i+1)
 	}
 	return resp, err
 }
