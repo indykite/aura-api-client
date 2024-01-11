@@ -35,6 +35,11 @@ func mockGet(id string) {
 		httpmock.NewStringResponder(200, string(body)))
 }
 
+func mockGetFailing(id string, errorCode int) {
+	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
+		httpmock.NewStringResponder(errorCode, "Some error"))
+}
+
 func mockCreate(name string) {
 	b := map[string]any{
 		"data": map[string]any{
@@ -81,6 +86,7 @@ var _ = Describe("Aura", func() {
 		if err != nil {
 			panic(err)
 		}
+		mockAuth()
 	})
 	Describe("Authenticating", func() {
 		It("should not be called when a valid token exists", func() {
@@ -88,7 +94,6 @@ var _ = Describe("Aura", func() {
 			client, err = aura.NewClient("foo", "bar", "mox",
 				aura.WithEndpoint(endpoint),
 				aura.WithAuthInfo("foo", expiry))
-			mockAuth()
 			mockGet("123id")
 			_, err := client.GetInstance("123id")
 			Expect(err).To(Succeed())
@@ -100,7 +105,6 @@ var _ = Describe("Aura", func() {
 			client, err = aura.NewClient("foo", "bar", "mox",
 				aura.WithEndpoint(endpoint),
 				aura.WithAuthInfo("foo", expiry))
-			mockAuth()
 			mockGet("123id")
 			_, err := client.GetInstance("123id")
 			Expect(err).To(Succeed())
@@ -108,7 +112,6 @@ var _ = Describe("Aura", func() {
 			Expect(calls["POST "+endpoint+"/oauth/token"]).To(Equal(1))
 		})
 		It("should be called when no token is present", func() {
-			mockAuth()
 			mockGet("123id")
 			_, err := client.GetInstance("123id")
 			Expect(err).To(Succeed())
@@ -116,9 +119,38 @@ var _ = Describe("Aura", func() {
 			Expect(calls["POST "+endpoint+"/oauth/token"]).To(Equal(1))
 		})
 	})
+	Describe("Retrying requests", func() {
+		It("should not happen by default", func() {
+			mockGetFailing("123id", 500)
+			_, err := client.GetInstance("123id")
+			Expect(err).NotTo(Succeed())
+			calls := httpmock.GetCallCountInfo()
+			Expect(calls["GET "+endpoint+"/v1/instances/123id"]).To(Equal(1))
+		})
+		It("should happen on some 5xx errors", func() {
+			client, err = aura.NewClient("foo", "bar", "mox",
+				aura.WithRetries(1),
+				aura.WithEndpoint(endpoint))
+			mockGetFailing("123id", 500)
+			_, err := client.GetInstance("123id")
+			Expect(err).NotTo(Succeed())
+			calls := httpmock.GetCallCountInfo()
+			Expect(calls["GET "+endpoint+"/v1/instances/123id"]).To(Equal(2))
+
+		})
+		It("should not happen on 501 or 4xx errors", func() {
+			client, err = aura.NewClient("foo", "bar", "mox",
+				aura.WithRetries(1),
+				aura.WithEndpoint(endpoint))
+			mockGetFailing("123id", 501)
+			_, err := client.GetInstance("123id")
+			Expect(err).NotTo(Succeed())
+			calls := httpmock.GetCallCountInfo()
+			Expect(calls["GET "+endpoint+"/v1/instances/123id"]).To(Equal(1))
+		})
+	})
 	Describe("Creating an instance", func() {
 		It("should create a post request to the Aura API", func() {
-			mockAuth()
 			mockCreate("foo")
 			actual, err := client.CreateInstance("foo", "gcp", "2GB", "5", "us-east1", "enterprise-db")
 			Expect(err).To(Succeed())
@@ -127,7 +159,6 @@ var _ = Describe("Aura", func() {
 	})
 	Describe("Getting an instance", func() {
 		It("should return the instance info when succesful", func() {
-			mockAuth()
 			mockGet("abc123")
 			actual, err := client.GetInstance("abc123")
 			Expect(err).To(Succeed())
@@ -136,19 +167,16 @@ var _ = Describe("Aura", func() {
 	})
 	Describe("Deleting an instance", func() {
 		It("should return no error when successful", func() {
-			mockAuth()
 			mockDestroy("abc123")
 			err := client.DestroyInstance("abc123")
 			Expect(err).To(Succeed())
 		})
 		It("should treat 404 as success", func() {
-			mockAuth()
 			mockDestroyNotFound("abc123")
 			err := client.DestroyInstance("abc123")
 			Expect(err).To(Succeed())
 		})
 		It("should fail on other response codes", func() {
-			mockAuth()
 			mockDestroyFailing("abc123")
 			err := client.DestroyInstance("abc123")
 			Expect(err).To(Not(Succeed()))
