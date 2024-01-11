@@ -451,10 +451,6 @@ func (c *client) api() string {
 //		"data": response body goes here
 //	}
 func UnmarshalResponse(resp *http.Response) (any, error) {
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		// TODO add error handling
-		return nil, nil
-	}
 	defer resp.Body.Close()
 	var res map[string]any
 	err := responseBodyToMap(resp, &res)
