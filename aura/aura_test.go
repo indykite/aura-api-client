@@ -1,7 +1,9 @@
 package aura_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -19,8 +21,8 @@ func mockAuth() {
 		httpmock.NewStringResponder(200, `{"access_token": "bar", "expires_in": 3600}`))
 }
 
-func mockGet(id string) {
-	b := map[string]any{
+func mockedGetResponse(id string) map[string]any {
+	return map[string]any{
 		"data": map[string]any{
 			"id":             id,
 			"name":           "Production",
@@ -31,12 +33,20 @@ func mockGet(id string) {
 			"region":         "europe-west1",
 			"type":           "enterprise-db",
 			"memory":         "8GB",
-			"storage":        "16GB",
-		},
+			"storage":        "16GB"},
 	}
-	body, _ := json.Marshal(b)
+}
+
+func mockGet(id string) {
 	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
-		httpmock.NewStringResponder(200, string(body)))
+		func(req *http.Request) (*http.Response, error) {
+			resp, err := httpmock.NewJsonResponse(200, mockedGetResponse(id))
+			if err != nil {
+				panic(err)
+			}
+			resp.Header.Add("X-Request-Id", responseId)
+			return resp, nil
+		})
 }
 
 func mockGetFailing(id string, errorCode int) {
@@ -44,6 +54,19 @@ func mockGetFailing(id string, errorCode int) {
 		func(req *http.Request) (*http.Response, error) {
 			resp := httpmock.NewStringResponse(errorCode, "Some error")
 			resp.Header.Add("X-Request-Id", responseId)
+			return resp, nil
+		})
+}
+
+func mockGetDeprecated(id string, depDate string) {
+	httpmock.RegisterResponder("GET", endpoint+"/v1/instances/"+id,
+		func(req *http.Request) (*http.Response, error) {
+			resp, err := httpmock.NewJsonResponse(200, mockedGetResponse(id))
+			if err != nil {
+				panic(err)
+			}
+			resp.Header.Add("X-Request-Id", responseId)
+			resp.Header.Add("X-Tyk-Api-Expires", depDate)
 			return resp, nil
 		})
 }
@@ -94,7 +117,31 @@ var _ = Describe("Aura", func() {
 		}
 		mockAuth()
 	})
-	Describe("Response ID", func() {
+	Describe("Deprecation warnings", func() {
+		It("should be logged when found in the header", func() {
+			var (
+				b bytes.Buffer
+			)
+			depDate := "13. Nov 2026"
+			h := slog.NewTextHandler(&b, nil)
+			m := slog.New(h)
+			client, err = aura.NewClient("foo", "bar", "mox",
+				aura.WithEndpoint(endpoint),
+				aura.WithLogger(m),
+			)
+			// When the API is not deprecated nothing gets logged
+			mockGet("123id")
+			_, err := client.GetInstance("123id")
+			Expect(err).To(Succeed())
+			Expect(b.String()).NotTo(ContainSubstring(depDate))
+			// When the API is deprecated we expect the deprecation date to get logged
+			mockGetDeprecated("123id", depDate)
+			_, err = client.GetInstance("123id")
+			Expect(err).To(Succeed())
+			Expect(b.String()).To(ContainSubstring(depDate))
+		})
+	})
+	Describe("Request ID", func() {
 		It("should be added from the response header", func() {
 			mockGetFailing("123id", 500)
 			_, err := client.GetInstance("123id")

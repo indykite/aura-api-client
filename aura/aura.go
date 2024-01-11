@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 
 const endpoint = "https://api.neo4j.io"
 const retries = 0
+const version = "v1"
 
 // Retriable statuses specified in the Aura API
 var retryOn = []int{
@@ -58,6 +60,7 @@ type Client interface {
 
 type client struct {
 	httpClient     *http.Client
+	logger         *slog.Logger
 	endpoint       string
 	accessToken    string
 	tokenExpiresAt time.Time
@@ -65,6 +68,7 @@ type client struct {
 	clientID       string
 	tenantID       string
 	retries        int
+	version        string
 }
 
 type Option func(*client)
@@ -74,12 +78,14 @@ type Option func(*client)
 func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*client, error) {
 	c := &client{
 		httpClient:     &http.Client{},
+		logger:         slog.Default(),
 		endpoint:       endpoint,
 		retries:        retries,
 		clientID:       clientID,
 		clientSecret:   clientSecret,
 		tokenExpiresAt: time.Now(),
 		tenantID:       tenantID,
+		version:        version,
 	}
 	for _, o := range options {
 		o(c)
@@ -91,9 +97,9 @@ func NewClient(clientID, clientSecret, tenantID string, options ...Option) (*cli
 }
 
 // WithHTTPClient sets the HTTP client used to communicate with Aura.
-func WithHTTPClient(h http.Client) Option {
+func WithHTTPClient(h *http.Client) Option {
 	return func(c *client) {
-		c.httpClient = &h
+		c.httpClient = h
 	}
 }
 
@@ -113,11 +119,25 @@ func WithRetries(n int) Option {
 	}
 }
 
-// Sets custom access token and expiry time. Intended for testing, not production use.
+// WithAuthInfo sets custom access token and expiry time. Intended for testing, not production use.
 func WithAuthInfo(token string, expiresAt time.Time) Option {
 	return func(c *client) {
 		c.accessToken = token
 		c.tokenExpiresAt = expiresAt
+	}
+}
+
+// WithLogger sets a custom logger instead instead of slog
+func WithLogger(l *slog.Logger) Option {
+	return func(c *client) {
+		c.logger = l
+	}
+}
+
+// WithVersion sets the client to use a given API version
+func WithVersion(v string) Option {
+	return func(c *client) {
+		c.version = v
 	}
 }
 
@@ -184,7 +204,7 @@ func NewCreateResponse(httpResp *http.Response) (*CreateResponse, error) {
 // Possible values for the parameters can be found in the documentation of the
 // Neo4J Aura API
 func (c *client) CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error) {
-	req, err := c.NewRequest("POST", c.endpoint+"/v1/instances", map[string]any{
+	req, err := c.NewRequest("POST", c.api()+"/instances", map[string]any{
 		"name":           name,
 		"tenant_id":      c.tenantID,
 		"cloud_provider": cloudProvider,
@@ -275,7 +295,7 @@ func NewGetResponse(httpResp *http.Response) (*GetResponse, error) {
 // GetInstance attempts to get information about an instance identified
 // by the ID assigned to it by Neo4J.
 func (c *client) GetInstance(id string) (*GetResponse, error) {
-	req, err := c.NewRequest("GET", c.endpoint+"/v1/instances/"+id, nil)
+	req, err := c.NewRequest("GET", c.api()+"/instances/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +316,7 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 // Destroy instance tears down an instance identified by the Aura ID
 // A 404 from the API is seen as succcesful as it indicates the instance no longer exists
 func (c *client) DestroyInstance(id string) error {
-	req, err := c.NewRequest("DELETE", c.endpoint+"/v1/instances/"+id, nil)
+	req, err := c.NewRequest("DELETE", c.api()+"/instances/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -368,6 +388,10 @@ func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
 		time.Sleep(backoff[i])
 		return c.do(req, i+1)
 	}
+	// Issue a warning if the endpoint is marked for deprecation
+	if dep := resp.Header.Get("X-Tyk-Api-Expires"); dep != "" {
+		c.logger.Warn(c.version + " of the Neo4J Aura API expires on " + dep + ".\nEncountered at " + req.URL.String())
+	}
 	return resp, err
 }
 
@@ -412,6 +436,10 @@ func (c *client) authenticate() error {
 	c.accessToken = res["access_token"].(string)
 	c.tokenExpiresAt = time.Now().Add(time.Second * time.Duration(int(res["expires_in"].(float64))))
 	return nil
+}
+
+func (c *client) api() string {
+	return c.endpoint + "/" + c.version
 }
 
 // UnmarshalResponse handles any API errors or returns the content
