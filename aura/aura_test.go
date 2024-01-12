@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/indykite/aura-client/aura"
 	"github.com/jarcoal/httpmock"
@@ -166,33 +165,15 @@ var _ = Describe("Aura", func() {
 		})
 	})
 	Describe("Authenticating", func() {
-		It("should not be called when a valid token exists", func() {
-			expiry := time.Now().Add(10 * time.Hour)
-			client, err = aura.NewClient("foo", "bar", "mox",
-				aura.WithEndpoint(endpoint),
-				aura.WithAuthInfo("foo", expiry))
-			mockGet("123id")
-			_, err := client.GetInstance("123id")
-			Expect(err).To(Succeed())
-			calls := httpmock.GetCallCountInfo()
-			Expect(calls["POST "+endpoint+"/oauth/token"]).To(Equal(0))
-		})
-		It("should retry on expired token", func() {
-			expiry := time.Now().Add(-10 * time.Hour)
-			client, err = aura.NewClient("foo", "bar", "mox",
-				aura.WithEndpoint(endpoint),
-				aura.WithAuthInfo("foo", expiry))
+		It("should be called when no token is present and then cached", func() {
 			mockGet("123id")
 			_, err := client.GetInstance("123id")
 			Expect(err).To(Succeed())
 			calls := httpmock.GetCallCountInfo()
 			Expect(calls["POST "+endpoint+"/oauth/token"]).To(Equal(1))
-		})
-		It("should be called when no token is present", func() {
-			mockGet("123id")
-			_, err := client.GetInstance("123id")
+			_, err = client.GetInstance("123id")
 			Expect(err).To(Succeed())
-			calls := httpmock.GetCallCountInfo()
+			calls = httpmock.GetCallCountInfo()
 			Expect(calls["POST "+endpoint+"/oauth/token"]).To(Equal(1))
 		})
 	})

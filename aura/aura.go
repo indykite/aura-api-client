@@ -2,6 +2,7 @@ package aura
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,9 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 const endpoint = "https://api.neo4j.io"
@@ -64,37 +66,39 @@ type Client interface {
 }
 
 type client struct {
-	httpClient     *http.Client
-	logger         *slog.Logger
-	endpoint       string
-	accessToken    string
-	tokenExpiresAt time.Time
-	clientSecret   string
-	clientID       string
-	tenantID       string
-	retries        int
-	version        string
+	httpClient *http.Client
+	logger     *slog.Logger
+	endpoint   string
+	tenantID   string
+	retries    int
+	version    string
 }
 
 type option func(*client)
 
-// NewClient creates a new based on a given client ID and secret as well as
+// NewClient creates a new client based on a given client ID and secret as well as
 // options for customizing the returned client.
 func NewClient(clientID, clientSecret, tenantID string, options ...option) (*client, error) {
+	ctx := context.Background()
+
 	c := &client{
-		httpClient:     &http.Client{},
-		logger:         slog.Default(),
-		endpoint:       endpoint,
-		retries:        retries,
-		clientID:       clientID,
-		clientSecret:   clientSecret,
-		tokenExpiresAt: time.Now(),
-		tenantID:       tenantID,
-		version:        version,
+		httpClient: &http.Client{},
+		logger:     slog.Default(),
+		endpoint:   endpoint,
+		retries:    retries,
+		tenantID:   tenantID,
+		version:    version,
 	}
 	for _, o := range options {
 		o(c)
 	}
+	conf := &clientcredentials.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		TokenURL:     c.endpoint + "/oauth/token",
+	}
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, c.httpClient)
+	c.httpClient = conf.Client(ctx)
 	if c.retries > 3 {
 		return nil, errors.New("The maximum number of retries is 3")
 	}
@@ -121,14 +125,6 @@ func WithEndpoint(e string) option {
 func WithRetries(n int) option {
 	return func(c *client) {
 		c.retries = n
-	}
-}
-
-// WithAuthInfo sets custom access token and expiry time. Intended for testing, not production use.
-func WithAuthInfo(token string, expiresAt time.Time) option {
-	return func(c *client) {
-		c.accessToken = token
-		c.tokenExpiresAt = expiresAt
 	}
 }
 
@@ -367,25 +363,10 @@ func (c *client) Do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
-	// Sign the request
-	err := c.sign(req)
-	if err != nil {
-		return nil, err
-	}
 	// Perform the call
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
-	}
-	// If authorization is stale then refresh and call again
-	if resp.StatusCode == http.StatusForbidden {
-		// refresh bearer token
-		c.accessToken = ""
-		err = c.sign(req)
-		if err != nil {
-			return nil, err
-		}
-		resp, err = c.httpClient.Do(req)
 	}
 	// Retry the request in case of 5xx errors
 	if i < uint(c.retries) && slices.Contains(retryOn, resp.StatusCode) {
@@ -399,49 +380,6 @@ func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
 		c.logger.Warn(c.version + " of the Neo4J Aura API expires on " + dep + ".\nEncountered at " + req.URL.String())
 	}
 	return resp, err
-}
-
-// sign adds a valid access token to a request.
-func (c *client) sign(req *http.Request) error {
-	if c.accessToken == "" || time.Now().After(c.tokenExpiresAt) {
-		err := c.authenticate()
-		if err != nil {
-			return err
-		}
-	}
-	req.Header.Add("Authorization", "Bearer "+c.accessToken)
-	return nil
-}
-
-// authenticate ensures that we have an access token and that it is valid.
-func (c *client) authenticate() error {
-	req, err := http.NewRequest("POST", c.endpoint+"/oauth/token", strings.NewReader("grant_type=client_credentials"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if err != nil {
-		return err
-	}
-	req.SetBasicAuth(c.clientID, c.clientSecret)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return errors.New("authentication failed with status code: " + strconv.Itoa(resp.StatusCode))
-	}
-	var res map[string]any
-	err = responseBodyToMap(resp, &res)
-	if err != nil {
-		return err
-	}
-	if _, ok := res["access_token"].(string); !ok {
-		return errors.New("auth response missing access_token key or value not string")
-	}
-	if _, ok := res["expires_in"].(float64); !ok {
-		return errors.New("auth response missing expires_in key or value not numerical")
-	}
-	c.accessToken = res["access_token"].(string)
-	c.tokenExpiresAt = time.Now().Add(time.Second * time.Duration(int(res["expires_in"].(float64))))
-	return nil
 }
 
 func (c *client) api() string {
