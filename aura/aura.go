@@ -9,9 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
-	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -19,20 +18,6 @@ import (
 const endpoint = "https://api.neo4j.io"
 const retries = 0
 const version = "v1"
-
-// Retriable statuses specified in the Aura API
-var retryOn = []int{
-	http.StatusInternalServerError,
-	http.StatusBadGateway,
-	http.StatusServiceUnavailable,
-	http.StatusGatewayTimeout,
-}
-
-var backoff = []time.Duration{
-	1 * time.Second,
-	3 * time.Second,
-	8 * time.Second,
-}
 
 // AuraError is used to inject the request ID used by Neo4J support into
 // error messages when possible and include the response body.
@@ -80,17 +65,20 @@ type option func(*client)
 // options for customizing the returned client.
 func NewClient(clientID, clientSecret, tenantID string, options ...option) (*client, error) {
 	ctx := context.Background()
-
 	c := &client{
-		httpClient: &http.Client{},
-		logger:     slog.Default(),
-		endpoint:   endpoint,
-		retries:    retries,
-		tenantID:   tenantID,
-		version:    version,
+		logger:   slog.Default(),
+		endpoint: endpoint,
+		retries:  retries,
+		tenantID: tenantID,
+		version:  version,
 	}
 	for _, o := range options {
 		o(c)
+	}
+	r := retryablehttp.NewClient()
+	r.RetryMax = c.retries
+	if c.httpClient == nil {
+		c.httpClient = r.StandardClient()
 	}
 	conf := &clientcredentials.Config{
 		ClientID:     clientID,
@@ -99,9 +87,6 @@ func NewClient(clientID, clientSecret, tenantID string, options ...option) (*cli
 	}
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, c.httpClient)
 	c.httpClient = conf.Client(ctx)
-	if c.retries > 3 {
-		return nil, errors.New("The maximum number of retries is 3")
-	}
 	return c, nil
 }
 
@@ -216,7 +201,7 @@ func (c *client) CreateInstance(name, cloudProvider, memory, version, region, in
 	if err != nil {
 		return nil, err
 	}
-	apiResp, err := c.Do(req)
+	apiResp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +284,7 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	apiResp, err := c.Do(req)
+	apiResp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +305,7 @@ func (c *client) DestroyInstance(id string) error {
 	if err != nil {
 		return err
 	}
-	apiResp, err := c.Do(req)
+	apiResp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -356,24 +341,11 @@ func (c *client) newRequest(method, path string, reqBody map[string]any) (*http.
 	return req, nil
 }
 
-// Do runs a given request and handles any authentication errors
-// encountered along the way.
-func (c *client) Do(req *http.Request) (*http.Response, error) {
-	return c.do(req, 0)
-}
-
-func (c *client) do(req *http.Request, i uint) (*http.Response, error) {
+func (c *client) do(req *http.Request) (*http.Response, error) {
 	// Perform the call
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
-	}
-	// Retry the request in case of 5xx errors
-	if i < uint(c.retries) && slices.Contains(retryOn, resp.StatusCode) {
-		c.logger.Info(`Retried Aura API request after receiving: ` +
-			resp.Status + " " + responseBodyToString(resp))
-		time.Sleep(backoff[i])
-		return c.do(req, i+1)
 	}
 	// Issue a warning if the endpoint is marked for deprecation
 	if dep := resp.Header.Get("X-Tyk-Api-Expires"); dep != "" {
