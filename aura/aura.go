@@ -77,6 +77,17 @@ func NewClient(clientID, clientSecret, tenantID string, options ...option) (*cli
 	}
 	r := retryablehttp.NewClient()
 	r.RetryMax = c.retries
+	r.ErrorHandler = func(resp *http.Response, err error, numTries int) (*http.Response, error) {
+		var m string
+		if err != nil {
+			m += fmt.Sprintln(err.Error())
+		}
+		if resp != nil {
+			m += fmt.Sprintln(resp.Status)
+		}
+		e := errors.New(m + fmt.Sprintf(" Gave up after %d attempts", numTries))
+		return resp, newAuraError(e, resp)
+	}
 	if c.httpClient == nil {
 		c.httpClient = r.StandardClient()
 	}
