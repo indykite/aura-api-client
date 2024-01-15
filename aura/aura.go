@@ -390,14 +390,7 @@ func unmarshalResponse(resp *http.Response) (any, error) {
 
 func responseBodyToMap(resp *http.Response, res *map[string]any) error {
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if len(body) == 0 {
-		return nil
-	}
-	d := json.NewDecoder(bytes.NewReader(body))
+	d := json.NewDecoder(resp.Body)
 	return d.Decode(&res)
 }
 
