@@ -1,4 +1,4 @@
-module github.com/indykite/aura-client
+module github.com/indykite/aura-api-client
 
 go 1.21.1
 
