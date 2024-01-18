@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 
-	"github.com/indykite/aura-client/aura"
+	"github.com/indykite/aura-api-client/aura"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
