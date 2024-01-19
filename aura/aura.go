@@ -24,12 +24,12 @@ const version = "v1"
 type AuraError struct {
 	requestID string
 	Err       error
-	response  string
+	response  *http.Response
 }
 
 func (e *AuraError) Error() string {
 	return fmt.Sprintf("Aura API error: %v\nAura request ID: %v\nResponse body: %v",
-		e.Err, e.requestID, e.response)
+		e.Err, e.requestID, responseBodyToString(e.response))
 }
 
 // newAuraError returns an AuraError with the requestID set to the
@@ -39,7 +39,7 @@ func newAuraError(err error, resp *http.Response) *AuraError {
 	return &AuraError{
 		requestID: resp.Header.Get("X-Request-Id"),
 		Err:       err,
-		response:  responseBodyToString(resp),
+		response:  resp,
 	}
 }
 
@@ -395,6 +395,9 @@ func responseBodyToMap(resp *http.Response, res *map[string]any) error {
 }
 
 func responseBodyToString(resp *http.Response) string {
+	if resp == nil {
+		return ""
+	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil || len(body) == 0 {
