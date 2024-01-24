@@ -2,6 +2,7 @@ package aura_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -152,7 +153,7 @@ var _ = Describe("Aura", Ordered, func() {
 	BeforeEach(func() {
 		responseMap = make(map[Path]F)
 		callCounter = make(map[Path]int)
-		client, err = aura.NewClient("foo", "bar", "mox", aura.WithEndpoint(server.URL))
+		client, err = aura.NewClient(context.Background(), "foo", "bar", "mox", aura.WithEndpoint(server.URL))
 		if err != nil {
 			panic(err)
 		}
@@ -168,7 +169,7 @@ var _ = Describe("Aura", Ordered, func() {
 			depDate := "13. Nov 2026"
 			h := slog.NewTextHandler(&b, nil)
 			m := slog.New(h)
-			client, err = aura.NewClient("foo", "bar", "mox",
+			client, err = aura.NewClient(context.Background(), "foo", "bar", "mox",
 				aura.WithEndpoint(server.URL),
 				aura.WithLogger(m),
 			)
@@ -221,7 +222,7 @@ var _ = Describe("Aura", Ordered, func() {
 			Expect(callCounter[GET_INSTANCE]).To(Equal(1))
 		})
 		It("should happen on some 5xx errors", func() {
-			client, err = aura.NewClient("foo", "bar", "mox",
+			client, err = aura.NewClient(context.Background(), "foo", "bar", "mox",
 				aura.WithRetries(1),
 				aura.WithEndpoint(server.URL))
 			responseMap[GET_INSTANCE] = mockError(500)
@@ -230,7 +231,7 @@ var _ = Describe("Aura", Ordered, func() {
 			Expect(callCounter[GET_INSTANCE]).To(Equal(2))
 		})
 		It("should not happen on 501 or 4xx errors", func() {
-			client, err = aura.NewClient("foo", "bar", "mox",
+			client, err = aura.NewClient(context.Background(), "foo", "bar", "mox",
 				aura.WithRetries(1),
 				aura.WithEndpoint(server.URL))
 			responseMap[GET_INSTANCE] = mockError(501)

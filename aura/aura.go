@@ -63,8 +63,7 @@ type option func(*client)
 
 // NewClient creates a new client based on a given client ID and secret as well as
 // options for customizing the returned client.
-func NewClient(clientID, clientSecret, tenantID string, options ...option) (*client, error) {
-	ctx := context.Background()
+func NewClient(ctx context.Context, clientID, clientSecret, tenantID string, options ...option) (*client, error) {
 	c := &client{
 		logger:   slog.Default(),
 		endpoint: endpoint,
