@@ -22,6 +22,7 @@ const (
 	CREATE_INSTANCE Path = iota
 	DESTROY_INSTANCE
 	GET_INSTANCE
+	PAUSE_INSTANCE
 	AUTHENTICATE
 )
 
@@ -126,6 +127,11 @@ var _ = Describe("Aura", Ordered, func() {
 			panic(err)
 		}
 		routes[DESTROY_INSTANCE] = pat
+		pat, err = regexp.Compile(`^\/v1\/instances\/\w+\/pause$`)
+		if err != nil {
+			panic(err)
+		}
+		routes[PAUSE_INSTANCE] = pat
 		// Create the server
 		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var path Path
@@ -138,6 +144,8 @@ var _ = Describe("Aura", Ordered, func() {
 				path = CREATE_INSTANCE
 			case r.Method == "DELETE" && routes[DESTROY_INSTANCE].Match([]byte(r.URL.Path)):
 				path = DESTROY_INSTANCE
+			case r.Method == "PUT" && routes[PAUSE_INSTANCE].Match([]byte(r.URL.Path)):
+				path = PAUSE_INSTANCE
 			default:
 				panic("Unexpected request for testing")
 			}
@@ -317,6 +325,37 @@ var _ = Describe("Aura", Ordered, func() {
 			responseMap[DESTROY_INSTANCE] = f
 			err := client.DestroyInstance("abc123")
 			Expect(err).NotTo(Succeed())
+		})
+	})
+	Describe("Pausing an instance", func() {
+		It("should create a PUT request to the right URL", func() {
+			f := func(w http.ResponseWriter, r *http.Request) error {
+				m := map[string]any{
+					"data": map[string]any{
+						"id":             "abc123",
+						"name":           "Production",
+						"status":         "pausing",
+						"connection_url": "YOUR_CONNECTION_URL",
+						"tenant_id":      "YOUR_TENANT_ID",
+						"cloud_provider": "gcp",
+						"memory":         "8GB",
+						"region":         "europe-west1",
+						"type":           "enterprise-db",
+					},
+				}
+				b, err := json.Marshal(m)
+				if err != nil {
+					panic(err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Request-Id", responseId)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(b)
+				return nil
+			}
+			responseMap[PAUSE_INSTANCE] = f
+			err := client.PauseInstance("abc123")
+			Expect(err).To(Succeed())
 		})
 	})
 })
