@@ -48,6 +48,7 @@ type Client interface {
 	CreateInstance(name, cloudProvider, memory, version, region, instanceType string) (*CreateResponse, error)
 	GetInstance(id string) (*GetResponse, error)
 	DestroyInstance(id string) error
+	PauseInstance(id string) error
 }
 
 type client struct {
@@ -306,6 +307,24 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 		return nil, newAuraError(err, apiResp)
 	}
 	return resp, nil
+}
+
+// PauseInstance puts a given instance on pause, making it unavailable for use.
+// Note that you can only put instances on pause for a certain amount of time after which
+// they automatically be put online again. Check the Aura documentation for details.
+func (c *client) PauseInstance(id string) error {
+	req, err := c.newRequest("PUT", c.api()+"/instances/"+id+"/pause", nil)
+	if err != nil {
+		return err
+	}
+	apiResp, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	if apiResp.StatusCode >= http.StatusOK && apiResp.StatusCode < http.StatusMultipleChoices {
+		return nil
+	}
+	return newAuraError(errors.New(apiResp.Status), apiResp)
 }
 
 // Destroy instance tears down an instance identified by the Aura ID
