@@ -313,7 +313,7 @@ func (c *client) GetInstance(id string) (*GetResponse, error) {
 // Note that you can only put instances on pause for a certain amount of time after which
 // they automatically be put online again. Check the Aura documentation for details.
 func (c *client) PauseInstance(id string) error {
-	req, err := c.newRequest("PUT", c.api()+"/instances/"+id+"/pause", nil)
+	req, err := c.newRequest("POST", c.api()+"/instances/"+id+"/pause", nil)
 	if err != nil {
 		return err
 	}
@@ -362,10 +362,9 @@ func (c *client) newRequest(method, path string, reqBody map[string]any) (*http.
 	if err != nil {
 		return nil, err
 	}
+
 	// Inject headers
-	if body != nil {
-		req.Header.Add("Content-Type", "application/json")
-	}
+	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Accept", "application/json")
 	return req, nil
 }

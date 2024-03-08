@@ -144,7 +144,7 @@ var _ = Describe("Aura", Ordered, func() {
 				path = CREATE_INSTANCE
 			case r.Method == "DELETE" && routes[DESTROY_INSTANCE].Match([]byte(r.URL.Path)):
 				path = DESTROY_INSTANCE
-			case r.Method == "PUT" && routes[PAUSE_INSTANCE].Match([]byte(r.URL.Path)):
+			case r.Method == "POST" && routes[PAUSE_INSTANCE].Match([]byte(r.URL.Path)):
 				path = PAUSE_INSTANCE
 			default:
 				panic("Unexpected request for testing")
@@ -249,7 +249,7 @@ var _ = Describe("Aura", Ordered, func() {
 		})
 	})
 	Describe("Creating an instance", func() {
-		It("should create a post request to the Aura API", func() {
+		It("should create a POST request to the Aura API", func() {
 			f := func(w http.ResponseWriter, r *http.Request) error {
 				m := map[string]any{
 					"data": map[string]any{
@@ -328,7 +328,7 @@ var _ = Describe("Aura", Ordered, func() {
 		})
 	})
 	Describe("Pausing an instance", func() {
-		It("should create a PUT request to the right URL", func() {
+		It("should create a POST request to the right URL", func() {
 			f := func(w http.ResponseWriter, r *http.Request) error {
 				m := map[string]any{
 					"data": map[string]any{
