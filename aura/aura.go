@@ -230,16 +230,16 @@ func (c *client) CreateInstance(name, cloudProvider, memory, version, region, in
 // is constructed from specification at
 // https://neo4j.com/docs/aura/platform/api/specification/#/instances/get-instance-id.
 type GetResponse struct {
-	ID            string // Internal ID of the instance
-	Name          string // The name we chose for the instance
-	Status        string // Indicates whether the instance is ready or under setup
-	TenantID      string // Tenant for managing Aura console users
-	CloudProvider string // GCP, AWS, ...
-	ConnectionURL string // URL the instance is hosted at
-	Region        string // us-east1, eu-central2, ...
-	InstanceType  string // enterprise-db, professional-db, ...
-	Memory        string // Amount of memory allocated, i.e. "8GB"
-	Storage       string // Amount of storage allocated, i.e. "16GB"
+	ID            string  // Internal ID of the instance
+	Name          string  // The name we chose for the instance
+	Status        string  // Indicates whether the instance is ready or under setup
+	TenantID      string  // Tenant for managing Aura console users
+	CloudProvider string  // GCP, AWS, ...
+	ConnectionURL *string // URL the instance is hosted at
+	Region        string  // us-east1, eu-central2, ...
+	InstanceType  string  // enterprise-db, professional-db, ...
+	Memory        string  // Amount of memory allocated, i.e. "8GB"
+	Storage       string  // Amount of storage allocated, i.e. "16GB"
 }
 
 // newGetResponse attempts to construct a GetResponse struct from a given
@@ -257,7 +257,7 @@ func newGetResponse(httpResp *http.Response) (*GetResponse, error) {
 	if resp.ID, ok = m["id"].(string); !ok {
 		return nil, errors.New(`response missing key "id" or value not string`)
 	}
-	if resp.ConnectionURL, ok = m["connection_url"].(string); !ok {
+	if resp.ConnectionURL, ok = m["connection_url"].(*string); !ok { // Can be null
 		return nil, errors.New(`response missing key "connection_url" or value not string`)
 	}
 	if resp.Name, ok = m["name"].(string); !ok {
@@ -277,12 +277,6 @@ func newGetResponse(httpResp *http.Response) (*GetResponse, error) {
 	}
 	if resp.Status, ok = m["status"].(string); !ok {
 		return nil, errors.New(`response missing key "status" or value not string`)
-	}
-	if resp.Memory, ok = m["memory"].(string); !ok {
-		return nil, errors.New(`response missing key "memory" or value not string`)
-	}
-	if resp.Storage, ok = m["storage"].(string); !ok {
-		return nil, errors.New(`response missing key "storage" or value not string`)
 	}
 
 	return resp, nil
