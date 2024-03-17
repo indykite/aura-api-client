@@ -144,7 +144,7 @@ var _ = Describe("Aura", Ordered, func() {
 				path = CREATE_INSTANCE
 			case r.Method == "DELETE" && routes[DESTROY_INSTANCE].Match([]byte(r.URL.Path)):
 				path = DESTROY_INSTANCE
-			case r.Method == "PUT" && routes[PAUSE_INSTANCE].Match([]byte(r.URL.Path)):
+			case r.Method == "POST" && routes[PAUSE_INSTANCE].Match([]byte(r.URL.Path)):
 				path = PAUSE_INSTANCE
 			default:
 				panic("Unexpected request for testing")
@@ -249,7 +249,7 @@ var _ = Describe("Aura", Ordered, func() {
 		})
 	})
 	Describe("Creating an instance", func() {
-		It("should create a post request to the Aura API", func() {
+		It("should create a POST request to the Aura API", func() {
 			f := func(w http.ResponseWriter, r *http.Request) error {
 				m := map[string]any{
 					"data": map[string]any{
@@ -277,7 +277,7 @@ var _ = Describe("Aura", Ordered, func() {
 			responseMap[CREATE_INSTANCE] = f
 			actual, err := client.CreateInstance("foo", "gcp", "2GB", "5", "europe-west1", "enterprise-db")
 			Expect(err).To(Succeed())
-			Expect(actual.Name).To(Equal("foo"))
+			Expect(actual.Data.Name).To(Equal("foo"))
 		})
 	})
 	Describe("Getting an instance", func() {
@@ -285,7 +285,7 @@ var _ = Describe("Aura", Ordered, func() {
 			mockGet("abc123")
 			actual, err := client.GetInstance("abc123")
 			Expect(err).To(Succeed())
-			Expect(actual.ID).To(Equal("abc123"))
+			Expect(actual.Data.ID).To(Equal("abc123"))
 		})
 	})
 	Describe("Deleting an instance", func() {
@@ -328,7 +328,7 @@ var _ = Describe("Aura", Ordered, func() {
 		})
 	})
 	Describe("Pausing an instance", func() {
-		It("should create a PUT request to the right URL", func() {
+		It("should create a POST request to the right URL", func() {
 			f := func(w http.ResponseWriter, r *http.Request) error {
 				m := map[string]any{
 					"data": map[string]any{
