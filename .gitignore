@@ -1,1 +1,45 @@
-cli/
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+*.out.tmp
+
+# Output of the test run
+test/report*.html
+test/results*
+
+# Config for services
+services/*/config.json
+
+# Strict Linter config - is auto generated
+.golangci.strict.yaml
+.golangci.lenient.yaml
+
+# gcp ignores
+docker/storage/*
+docker/storage/.meta
+
+# Dependency directories (remove the comment below to include it)
+.idea
+.env
+/services/helios/cloudbuild.yaml
+/pkg/flow/dsl/ignore_test.go
+__debug_bin
+test/node_modules/
+test/results/
+/pkg/flow/dsl/testdata/.real*flow.yaml
+junit_*.xml
+.run/local*.xml
+tool
+.private/
+
+# Mac OS
+.DS_Store

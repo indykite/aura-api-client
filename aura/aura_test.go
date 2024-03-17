@@ -277,7 +277,7 @@ var _ = Describe("Aura", Ordered, func() {
 			responseMap[CREATE_INSTANCE] = f
 			actual, err := client.CreateInstance("foo", "gcp", "2GB", "5", "europe-west1", "enterprise-db")
 			Expect(err).To(Succeed())
-			Expect(actual.Name).To(Equal("foo"))
+			Expect(actual.Data.Name).To(Equal("foo"))
 		})
 	})
 	Describe("Getting an instance", func() {
@@ -285,7 +285,7 @@ var _ = Describe("Aura", Ordered, func() {
 			mockGet("abc123")
 			actual, err := client.GetInstance("abc123")
 			Expect(err).To(Succeed())
-			Expect(actual.ID).To(Equal("abc123"))
+			Expect(actual.Data.ID).To(Equal("abc123"))
 		})
 	})
 	Describe("Deleting an instance", func() {
