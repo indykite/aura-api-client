@@ -1,0 +1,14 @@
+# Each line is a file pattern followed by one or more owners.
+# Later match takes precedence over earlier rule.
+
+# Global rule set for everything, and special cases exclude later
+* @indykite/be-code-reviewers
+
+# Dependencies and build files
+go.mod @marvinkite
+go.sum @marvinkite
+Dockerfile @marvinkite
+package.json @marvinkite
+package.lock @marvinkite
+yarn.lock @marvinkite
+.golangci.yml @arxeiss
