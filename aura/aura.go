@@ -138,7 +138,7 @@ func WithVersion(v string) option {
 	}
 }
 
-type commonResponse struct {
+type ResponseCommonProperties struct {
 	ID            string `json:"id"`             // Internal ID of the instance
 	Name          string `json:"name"`           // The name we chose for the instance
 	TenantID      string `json:"tenant_id"`      // Tenant for managing Aura console users
@@ -148,27 +148,31 @@ type commonResponse struct {
 	InstanceType  string `json:"type"`           // enterprise-db, professional-db, ...
 }
 
+type CreateResponseData struct {
+	ResponseCommonProperties
+	Username string `json:"username"` // Name of the initial admin user
+	Password string `json:"password"` // Password of the initial admin user
+}
+
 // CreateResponse is returned when creating an Aura instance and is
 // constructed from the values from
 // https://neo4j.com/docs/aura/platform/api/specification/#/instances/post-instances.
 type CreateResponse struct {
-	Data struct {
-		commonResponse
-		Username string `json:"username"` // Name of the initial admin user
-		Password string `json:"password"` // Password of the initial admin user
-	} `json:"data"`
+	Data CreateResponseData `json:"data"`
+}
+
+type GetResponseData struct {
+	ResponseCommonProperties
+	Status  string `json:"status"`  // Indicates whether the instance is ready or under setup
+	Memory  string `json:"memory"`  // Amount of memory allocated, i.e. "8GB"
+	Storage string `json:"storage"` // Amount of storage allocated, i.e. "16GB"
 }
 
 // GetResponse contains information about a given Aura instance and
 // is constructed from specification at
 // https://neo4j.com/docs/aura/platform/api/specification/#/instances/get-instance-id.
 type GetResponse struct {
-	Data struct {
-		commonResponse
-		Status  string `json:"status"`  // Indicates whether the instance is ready or under setup
-		Memory  string `json:"memory"`  // Amount of memory allocated, i.e. "8GB"
-		Storage string `json:"storage"` // Amount of storage allocated, i.e. "16GB"
-	} `json:"data"`
+	Data GetResponseData `json:"data"`
 }
 
 // CreateInstance attempts to create a new Aura instance with the given name
